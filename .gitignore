@@ -1,5 +1,9 @@
+# Ignore jekyll's generated metadata
 _site
 .sass-cache
 .jekyll-cache
 .jekyll-metadata
+
+# Ignore bundler's local config/data
 vendor
+.bundle
