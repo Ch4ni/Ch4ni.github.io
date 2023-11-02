@@ -4,8 +4,6 @@ title: Book An Appointment
 permalink: /schedule/
 ---
 
-# Book an Appointment
-
 Please select a slot from the schedule to book an appointment. If the author has directed you to this page, please feel free to use this as a reference and book the appointment using your own tools if you desire. Once confirmed the schedule will be updated with the externally booked appointment.
 
 <!-- Google Calendar Appointment Scheduling begin -->
