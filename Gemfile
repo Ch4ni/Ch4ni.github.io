@@ -12,3 +12,5 @@ end
 
 gem 'bulma-clean-theme', :github => 'chrisrhymes/bulma-clean-theme', :branch => 'master'
 gem 'http_parser.rb'
+
+gem "bundler", "~> 2.4", :group => :develop
