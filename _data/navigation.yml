@@ -1,4 +1,8 @@
-- name: About
-  link: /about/
-- name: Book an Appointment
-  link: /schedule/
+- name: Blog
+  link: /blog/
+- name: Links
+  dropdown:
+    - name: Gaming Industry Resources
+      link: /links/gaming-industry-resources
+    - name: Awesome Lists
+      link: /links/awesome-lists

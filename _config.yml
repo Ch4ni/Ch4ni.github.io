@@ -24,35 +24,44 @@ description: >- # this means to ignore newlines until "baseurl:"
   A software engineer and her notes
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "https://site.adahome.dev" # the base hostname & protocol for your site, e.g. http://example.com
-#twitter_username: jekyllrb
 github_username:  Ch4ni
 
-# Build settings
-remote_theme: chrisrhymes/bulma-clean-theme
+# set the in-use theme
+theme: bulma-clean-theme
+ignore_theme_config: true
+theme_color: '#902299'
+fixed_navbar: top
+#force_theme: light
+
+highlighter: rouge
+gist:
+  noscript: false
+
+# configuration for bulma-clean-theme
+lang: en
+
+# configure jekyll plugins
 plugins:
   - jekyll-feed
+  - jekyll-github-metadata
+  - jekyll-seo-tag
+  #- jekyll-commonmark-ghpages
 
-# Exclude from processing.
-# The following items will not be processed, by default.
-# Any item listed under the `exclude:` key here will be automatically added to
-# the internal "default list".
-#
-# Excluded items can be processed by explicitly listing the directories or
-# their entries' file path in the `include:` list.
-#
-# exclude:
-#   - .sass-cache/
-#   - .jekyll-cache/
-#   - gemfiles/
-#   - Gemfile
-#   - Gemfile.lock
-#   - node_modules/
-#   - vendor/bundle/
-#   - vendor/cache/
-#   - vendor/gems/
-#   - vendor/ruby/
+# markdown customization for github pages
+# this is for the 'jekyll-commonmark-ghpages' plugin.
+# https://github.com/github/jekyll-commonmark-ghpages?tab=readme-ov-file#installation
+#markdown: CommonMarkGhPages
+#markdown: kramdown
+kramdown:
+  math_engine: mathjax
+  syntax_highlighter: rouge
 
+# set the default format for post permalinks
+# see jekyll docs for more details: https://jekyllrb.com/docs/permalinks/#built-in-formats
 permalink: pretty
+
+# default values for front-matter.
+# https://jekyllrb.com/docs/configuration/front-matter-defaults/
 defaults:
   - 
     scope:
@@ -61,4 +70,3 @@ defaults:
     values:
       author: chani
       show_sidebar: false
-      menubar: main_menu
