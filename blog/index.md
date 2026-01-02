@@ -1,6 +1,5 @@
 ---
 layout: page
-menubar: main_menu
 ---
 {% for post in site.posts %}
   <article>

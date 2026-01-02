@@ -18,19 +18,32 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: AdaHome Dot Dev
+title: adahome.dev
 email: ada@adahome.dev
 description: >- # this means to ignore newlines until "baseurl:"
   A software engineer and her notes
 baseurl: "" # the subpath of your site, e.g. /blog
 url: "https://site.adahome.dev" # the base hostname & protocol for your site, e.g. http://example.com
-#twitter_username: jekyllrb
 github_username:  Ch4ni
 
-# Build settings
-remote_theme: chrisrhymes/bulma-clean-theme
+# theme settings
+hide_home: true
+theme: bulma-clean-theme
+ignore_theme_config: true
+lang: en
+
+# github-flavored-markdown settings
+highlighter: rouge
+gist:
+  noscript: false
+kramdown:
+  math_engine: mathjax
+  syntax_highlighter: rouge
+
 plugins:
   - jekyll-feed
+  - jekyll-github-metadata
+  - jekyll-seo-tag
 
 # Exclude from processing.
 # The following items will not be processed, by default.
@@ -52,7 +65,14 @@ plugins:
 #   - vendor/gems/
 #   - vendor/ruby/
 
+# set the default format for post permalinks
+# see jekyll docs for more details:
+# https://jekyllrd.com/docs/permalinks/#built-in-formats
 permalink: pretty
+
+# default values for front-matter.
+# see jekyll docs for more details:
+# https://jekyllrb.com/docs/configuration/front-matter-defaults/
 defaults:
   - 
     scope:
@@ -61,4 +81,4 @@ defaults:
     values:
       author: chani
       show_sidebar: false
-      menubar: main_menu
+
