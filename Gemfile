@@ -1,16 +1,13 @@
 source 'https://rubygems.org'
 
-# dependency of github-pages, ruby 3.x removed this package from the standard libs
-gem 'webrick'
+gem 'jekyll', '~> 4.4'
+gem 'bundler'
 
 group :jekyll_plugins do
-  # github-pages also provides a jekyll gem
-  gem 'github-pages'
-  gem 'jekyll-feed', '~> 0.12'
+  gem 'jekyll-feed'
   gem 'jekyll-compose'
+  gem 'jekyll-seo-tag'
+  gem 'jekyll-github-metadata'
 end
 
-gem 'bulma-clean-theme', :github => 'chrisrhymes/bulma-clean-theme', :branch => 'master'
-gem 'http_parser.rb'
-
-gem "bundler", "~> 2.4", :group => :develop
+gem 'bulma-clean-theme', '~> 1.3.0', :github => 'chrisrhymes/bulma-clean-theme', :group => :theme

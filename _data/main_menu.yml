@@ -1,6 +1,0 @@
-- label: Main Menu
-  items:
-  - name: Blog
-    link: /blog/
-  - name: Docs
-    link: /docs/
