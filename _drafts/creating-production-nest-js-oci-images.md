@@ -182,3 +182,285 @@ CI/CD is an important part of software development and deployment. One of the pr
 Unfortunately, the recommended Dockerfile is not deterministic. The same build can be run on the same machine, with zero code changes, and generate a different artifact every time.
 
 Fortunately, making the build more deterministic is relatively simple - just replace `npm install` with `npm ci`. `npm ci` is designed _specifically_ to be used in automated environments such is CI/CD and makes use of either `package-lock.json` or `npm-shrinkwrap.json` ([docs](https://docs.npmjs.com/cli/v11/commands/npm-ci)). This keeps dependencies locked to a specific version until the `package-lock.json` or `npm-shrinkwrap.json` is modified to a new version.
+
+Let's use a new Dockerfile based on the previous step, this time with the `ci` dependency install:
+
+```Dockerfile
+ARG NODE_VERSION=24
+
+# Use the official Node.js image as the base image
+FROM node:${NODE_VERSION}
+
+# Set the working directory inside the container
+WORKDIR /usr/src/app
+
+# copy package.json and package-lock.json to the working directory
+COPY package*.json ./
+
+# Install the (version locked) application dependencies
+RUN npm ci
+
+# Copy the rest of the application files
+COPY . .
+
+# Build the NestJS application
+RUN npm run build
+
+# Expose the application port
+EXPOSE 3000
+
+# Command to run the application
+CMD ["node", "dist/main"]
+```
+
+This change doesn't save us any space, but it does make image builds reproducible, which allow us to make use of other techniques.
+
+Before continuing, it's worth noting that the `NODE_VERSION` is at `24`, which generally means that it's not _pinned_ to a specific tag or release. In this case, this is by design - the version `24` will be used as the default for any local development builds which should be fine. To make builds both flexible _and_ reproducible, this should be specified as a parameter to the `docker build` via CI/CD ... there are a number of ways to fetch the appropriate version number, but that task lay outside the scope of this article.
+
+### Step Two: Multi-Stage Builds
+
+Splitting the build up into multiple stages allows for smaller final images, as well as the opportunity to make better use of layer caching. It's easy to go overboard with the number of stages, so I recommend starting with a small number and increasing the number of stages as it makes sense.
+
+Here, we can start with a builder stage, and a final image:
+
+```Dockerfile
+ARG NODE_VERSION=24
+
+# Use the official Node.js image as the base image
+FROM node:${NODE_VERSION} AS builder
+
+# Set the working directory inside the container
+WORKDIR /usr/src/app
+
+# copy package.json and package-lock.json to the working directory
+COPY package*.json ./
+
+# Install the (version locked) application dependencies
+RUN npm ci
+
+# Copy the rest of the application files
+COPY . .
+
+# Build the NestJS application
+RUN npm run build
+
+# This defines a new build stage for the final image
+FROM node:${NODE_VERSION}
+
+WORKDIR /usr/src/app
+
+COPY --from=builder /usr/src/app /usr/src/app
+
+# Expose the application port
+EXPOSE 3000
+
+# Command to run the application
+CMD ["node", "dist/main"]
+
+```
+
+Build the image:
+```shell
+docker build -t production-images:node24-slim-multistage . --build-arg NODE_VERSION=24-slim
+```
+
+And we can take a look at the new size:
+```shell
+$ docker images
+
+IMAGE                                            ID             DISK USAGE   CONTENT SIZE   EXTRA
+node:24                                          b2b2184ba9b7       1.64GB          424MB        
+node:24-slim                                     bf22df20270b        326MB         81.7MB        
+production-images:node24                         a4d496c1e1ee       1.97GB          468MB        
+production-images:node24-slim                    f277a962b151        667MB          139MB        
+production-images:node24-slim-npmci              8b2b9500774e        666MB          139MB        
+production-images:node24-slim-npmci-multistage   457594ab46e8        594MB          111MB     
+
+```
+
+Overall we've managed to save 28MB from our image content, and overall saved about 70MB or 10% from total disk usage. That's not bad!
+
+### Step Three: Runtime-Only Dependencies
+
+Using the multi-stage build approach we can now build an image that specifically only installs _runtime_ dependencies. A basic image stage for that might look like this:
+
+```Dockerfile
+ARG NODE_VERSION=24
+FROM node:${NODE_VERSION}
+WORKDIR /usr/src/app
+COPY package*.json ./
+RUN npm ci --omit=dev
+```
+
+
+With the runtime build-stage defined, we will still need to copy over our built application to the new image/layer.
+
+During the `npm run build` stage nest.js creates a `dist/` directory [and copies the resulting build into that directory](https://docs.nestjs.com/deployment) - we can use this to copy only the built application without any additional source code or other unnecessary files into the final image:
+
+```Dockerfile
+ARG NODE_VERSION=24
+
+# Use the official Node.js image as the base image
+FROM node:${NODE_VERSION} AS builder
+
+# Set the working directory inside the container
+WORKDIR /usr/src/app
+
+# copy package.json and package-lock.json to the working directory
+COPY package*.json ./
+
+# Install the (version locked) application dependencies
+RUN npm ci
+
+# Copy the rest of the application files
+COPY . .
+
+# Build the NestJS application
+RUN npm run build
+
+# This defines a new build stage for the final image
+FROM node:${NODE_VERSION}
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+
+RUN npm ci --omit=dev && npm prune --omit=dev
+COPY --from=builder /usr/src/app/dist /usr/src/app/dist
+
+# Expose the application port
+EXPOSE 3000
+
+# Command to run the application
+CMD ["node", "dist/main"]
+
+```
+
+
+Then build the image with:
+```shell
+docker build -t production-images:node24-slim-npmci-multistage-runtimedeps . --build-arg NODE_VERSION=24-slim
+```
+
+And inspect the new size:
+```shell
+$ docker images
+
+IMAGE                                                        ID             DISK USAGE   CONTENT SIZE   EXTRA
+node:24                                                      b2b2184ba9b7       1.64GB          424MB        
+node:24-slim                                                 bf22df20270b        326MB         81.7MB        
+production-images:node24                                     a4d496c1e1ee       1.97GB          468MB        
+production-images:node24-slim                                f277a962b151        667MB          139MB        
+production-images:node24-slim-npmci                          8b2b9500774e        666MB          139MB        
+production-images:node24-slim-npmci-multistage               457594ab46e8        594MB          111MB        
+production-images:node24-slim-npmci-multistage-runtimeOnly   641abbad4869        360MB         84.2MB        
+
+```
+
+Our new image is 234MB smaller on disk than the previous one - that's almost 40% smaller than the last technique!
+
+### Step four: Squashing Layers
+
+The next thing we can do to make our image smaller is to take some of the improvements from previous steps and combine them to remove layers from the final build. `docker build` used to have a `--squash` option, but that behavior was removed with the move to BuildKit. `podman build` still has support for the `--squash` [cli argument](https://docs.podman.io/en/stable/markdown/podman-build.1.html#squash).
+
+Since Docker build no longer supports `--squash` we can make use of build stages to perform a partial squash by assembling our specific changes and copying those en-masse over the base image:
+
+```Dockerfile
+ARG NODE_VERSION=24
+
+# Use the official Node.js image as the base image
+FROM node:${NODE_VERSION} AS builder
+
+# Set the working directory inside the container
+WORKDIR /usr/src/app
+
+# copy package.json and package-lock.json to the working directory
+COPY package*.json ./
+
+# Install the (version locked) application dependencies
+RUN npm ci
+
+# Copy the rest of the application files
+COPY . .
+
+# Build the NestJS application
+RUN npm run build
+
+# This defines a new build stage for the runtime stage
+FROM node:${NODE_VERSION} AS runtime
+
+WORKDIR /usr/src/app
+
+COPY package*.json ./
+
+RUN npm ci --omit=dev && npm prune --omit=dev
+COPY --from=builder /usr/src/app/dist /usr/src/app/dist
+
+# This defines a new build stage for the final image
+FROM node:${NODE_VERSION}
+WORKDIR /usr/src/app
+
+# copy the assembled runtime build directly on top of the node layer
+COPY --from=runtime /usr/src/app /usr/src/app
+
+# Expose the application port
+EXPOSE 3000
+
+# Command to run the application
+CMD ["node", "dist/main"]
+```
+
+Then build the new image:
+```shell
+docker build -t production-images:node24-slim-npmci-multistage-runtimeonly-squashed --build-arg NODE_VERSION=24-slim
+```
+
+And look at the new sizes:
+```shell
+$ docker images
+
+IMAGE                                                                 ID             DISK USAGE   CONTENT SIZE   EXTRA
+node:24                                                               b2b2184ba9b7       1.64GB          424MB        
+node:24-slim                                                          bf22df20270b        326MB         81.7MB        
+production-images:node24                                              a4d496c1e1ee       1.97GB          468MB        
+production-images:node24-slim                                         f277a962b151        667MB          139MB        
+production-images:node24-slim-npmci                                   8b2b9500774e        666MB          139MB        
+production-images:node24-slim-npmci-multistage                        457594ab46e8        594MB          111MB        
+production-images:node24-slim-npmci-multistage-runtimeOnly            641abbad4869        360MB         84.2MB        
+production-images:node24-slim-npmci-multistage-runtimeOnly-squashed   526308a8f6c3        350MB         81.4MB
+```
+
+This final step removes an additional 10MB from the image's disk usage, 2.8MB of which comes from savings in our application source. At this point our image is 350MB on disk (81.4MB of which is our application and dependencies) - down from 1.97GB on disk with 468MB of application and dependencies. This represents a total of about 17.7% of the total disk space for an image following the Nest.js recommendations.
+
+## (Optional) Step Five: Test Building with Alpine
+
+With all previous steps completed, we can test building the application with alpine by modifying a build-arg:
+
+```shell
+docker build -t production-images:node24-alpine-runtime . --build-arg NODE_VERSION=24-alpine
+```
+
+And we can see that this takes another 97MB off of the image bringing the total size down to just under 13% of the original image size!
+
+```shell
+$ docker images production-images:node24-alpine-runtime
+
+IMAGE                                     ID             DISK USAGE   CONTENT SIZE   EXTRA
+production-images:node24-alpine-runtime   e0097c5557c0        253MB         58.4MB       
+```
+
+Of course node on Alpine isn't _guaranteed_ to run every Nest.js app; there may even be build failures due to the underlying libc implementation - this is why Alpine comes as the _last_ step in optimizing for image size - we have good enough gains without any loss in compatibility.
+
+## Conclusion
+
+Using a combination of selecting [an appropriate base-image](https://github.com/nodejs/docker-node/blob/main/README.md#image-variants), [multi-stage docker builds](https://docs.docker.com/build/building/multi-stage/), [runtime-only dependencies](https://docs.npmjs.com/cli/v10/commands/npm-ci#omit), and layer squashing (a variation on multi-stage builds) we can easily cut approximately 80-87% from a Nest.js Container Image built with the Dockerfile recommended in the Nest.js documentation.
+
+This article focused on doing this with `docker build` and `npm`, but there are other tools for generating Container images (such as `podman build` or `buildah`), or managing node.js builds and dependencies (such as `yarn` and `pnmp`). To make use of these techniques for different tools, please refer to your specific tool's documentation.
+
+Optimizing container builds for disk size is only one facet of container optimization; there are no end of options, and no end of "micro-optimizations" - that's some of why I wrote this article: because I could see some low-effort ways to build smaller, more predictable production-ready artifacts than what's in the official Nest.js documentation.
+
+I wrote this article to address some low-effort areas to optimize nest.js applications for production workloads. You can find some other best-practices and useful tools/techniques in some of the links below:
+
+- docker-node (node.js official Docker Images) [best-practices](https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md) (Github)
+- docker [building best practices](https://docs.docker.com/build/building/best-practices/) (docs.docker.com)
+- npm [documentation](https://docs.npmjs.com/cli/v11/commands/npm-ci) (docs.npmjs.com) (see: `npm ci`, `npm config`, `npm prune`, `npm dedupe`, and anything else that sounds interesting!)
